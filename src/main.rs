@@ -1,3 +1,5 @@
+mod args;
+
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -12,6 +14,8 @@ use json;
 use ptree;
 use reqwest;
 use tokio::fs;
+
+const DEFAULT_LIMIT: u8 = 3;
 
 trait Labelable {}
 
@@ -145,24 +149,33 @@ impl ptree::TreeItem for Job {
 /// - project ID
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = env::args().collect::<Vec<String>>();
-    // Get project ID from first argument or .glp file.
-    let project_id = match args.get(1) {
+    // 0. Parse arguments.
+    let app_args = args::parse();
+    let project_id = match app_args.get_one::<String>("project") {
         Some(id) => id.to_owned(),
         None => fs::read_to_string(".glp")
             .await
             .expect("No project ID (no parameter nor .glp file."),
     };
 
+    // let args = env::args().collect::<Vec<String>>();
+    // // Get project ID from first argument or .glp file.
+    // let project_id = match args.get(1) {
+    //     Some(id) => id.to_owned(),
+    //     None => fs::read_to_string(".glp")
+    //         .await
+    //         .expect("No project ID (no parameter nor .glp file."),
+    // };
+
     let private_token = env::var("GLP_PRIVATE_TOKEN").unwrap();
-    let limit = 3;
 
     // 1. Fetch pipelines.
     let client = reqwest::Client::new();
     let response = client
         .get(format!(
             "https://gitlab.com/api/v4/projects/{}/pipelines?per_page={}",
-            project_id, limit
+            project_id,
+            app_args.get_one::<u8>("limit").unwrap().to_string()
         ))
         .header("PRIVATE-TOKEN", &private_token)
         .send()

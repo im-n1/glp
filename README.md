@@ -15,7 +15,7 @@ App uses following data sources:
   pipelines should be fetched for **or** a `.glp` file
   with project ID (which makes it the best candidate for
   your global `.gitignore` file when you put the file into
-  your every project
+  your every project)
 
 ## Example usage
 ```
@@ -29,5 +29,5 @@ $ GLP_PRIVATE_TOKEN=123 glp 456  # fetches pipelines for project with ID 456
 
 ## TODO
 - error handling + comfy error outputs
-- `-c` param for setting the number of pipelines on output
-  (instead of fixed 3)
+- ~`-c` param for setting the number of pipelines on output
+  (instead of fixed 3)~

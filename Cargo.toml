@@ -13,3 +13,4 @@ futures = "0.3"
 colored = "2"
 ptree = "0.4"
 humantime = "2.1.0"
+clap = { version="4", features=["string"] }
