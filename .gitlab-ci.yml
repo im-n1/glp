@@ -1,0 +1,18 @@
+stages:
+  - build
+  - release
+
+build:
+  stage: build
+  image: rust:latest
+  script:
+    - cargo build --verbose
+
+release:
+  stage: release
+  image: rust:latest
+  script:
+    - cargo build --release
+    - VERSION=$(grep version Cargo.toml | head -1 | cut -d "=" -f 2 | tr -d \" | tr -d "[:blank:]")
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file target/release/glp "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/glp/${VERSION}/glp"'
+

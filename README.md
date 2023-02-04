@@ -27,6 +27,9 @@ $ GLP_PRIVATE_TOKEN=123 glp 456  # fetches pipelines for project with ID 456
 1. clone this repository
 2. run `cargo install --path=.`
 
+or download prebuild binaries for `amd64`
+[here](https://gitlab.com/imn1/glp/-/packages/).
+
 ## TODO
 - error handling + comfy error outputs
 - ~`-c` param for setting the number of pipelines on output
