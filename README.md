@@ -30,6 +30,15 @@ $ GLP_PRIVATE_TOKEN=123 glp 456  # fetches pipelines for project with ID 456
 or download prebuild binaries for `amd64`
 [here](https://gitlab.com/imn1/glp/-/packages/).
 
+## Changelog
+### 0.1.1
+- `-c` param for setting the number of pipelines on output
+  (instead of fixed 3)
+- pipeline total run time added
+
+### 0.1.0
+- initial release
+
 ## TODO
 - error handling + comfy error outputs
 - ~`-c` param for setting the number of pipelines on output

@@ -47,11 +47,18 @@ impl ptree::TreeItem for Pipeline {
     type Child = Stage;
 
     fn write_self<W: io::Write>(&self, f: &mut W, _style: &ptree::Style) -> io::Result<()> {
+        let mut suffix = String::new();
+
+        if self.is_finished() {
+            suffix = self.get_finished_suffix();
+        }
+
         write!(
             f,
-            "{} ({})",
+            "{} ({}){}",
             &self.id.to_string(&self.status),
-            &self.git_ref
+            &self.git_ref,
+            suffix
         )
     }
 
@@ -60,6 +67,33 @@ impl ptree::TreeItem for Pipeline {
     }
 }
 
+impl Pipeline {
+    fn is_finished(&self) -> bool {
+        "success" == self.status || "failed" == self.status
+    }
+
+    /// Producess output like " [7m 2s]" as a sum of
+    /// duration of all pipeline jobs.
+    /// Truncate units lower than seconds.
+    fn get_finished_suffix(&self) -> String {
+        let mut sum = Duration::from_secs(0);
+
+        for stage in self.stages.iter() {
+            for job in stage.jobs.iter() {
+                if let Some(dur) = job.duration {
+                    sum += dur
+                }
+            }
+        }
+
+        format!(
+            " [{}]",
+            format_duration(Duration::from_secs(sum.as_secs())).to_string()
+        )
+    }
+}
+
+// Represents Gitlab stage (group of jobs).
 #[derive(Debug, Clone)]
 struct Stage {
     name: Label,
