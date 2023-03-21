@@ -192,16 +192,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .expect("No project ID (no parameter nor .glp file."),
     };
 
-    // let args = env::args().collect::<Vec<String>>();
-    // // Get project ID from first argument or .glp file.
-    // let project_id = match args.get(1) {
-    //     Some(id) => id.to_owned(),
-    //     None => fs::read_to_string(".glp")
-    //         .await
-    //         .expect("No project ID (no parameter nor .glp file."),
-    // };
-
-    let private_token = env::var("GLP_PRIVATE_TOKEN").unwrap();
+    let private_token = env::var("GLP_PRIVATE_TOKEN")
+        .expect("No Gitlab private token found - set GLP_PRIVATE_TOKEN environment variable.");
 
     // 1. Fetch pipelines.
     let client = reqwest::Client::new();
@@ -217,13 +209,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .text()
         .await?;
 
-    // println!(
-    //     "gitlab response: {}",
-    //     response.chars().take(50).collect::<String>()
-    // );
     let pipelines = json::parse(&response)?;
-    // print_type_of(&pipelines);
-    // println!("{:?}", &pipelines);
 
     // 2. Fetch jobs for each running pipeline.
     let mut tasks = vec![];
@@ -232,7 +218,6 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let pip = pipelines[i].clone();
         let private_token = private_token.clone();
         let project_id = project_id.clone();
-        // println!("processing pipeline {}", pip["id"]);
 
         tasks.push(tokio::spawn(async move {
             // Fetch jobs for current pipeline.
@@ -347,8 +332,13 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     // 3. Print tree.
-    for pip in pips {
-        ptree::output::print_tree(&pip).unwrap();
+    for (i, pip) in pips.iter().enumerate() {
+        // Space between pipelines.
+        if i > 0 {
+            println!("")
+        }
+
+        ptree::output::print_tree(pip).unwrap();
     }
 
     Ok(())

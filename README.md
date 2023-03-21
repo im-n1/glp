@@ -31,6 +31,10 @@ or download prebuild binaries for `amd64`
 [here](https://gitlab.com/imn1/glp/-/packages/).
 
 ## Changelog
+
+### 0.1.2 (in progess)
+- space between pipelines added
+
 ### 0.1.1
 - `-c` param for setting the number of pipelines on output
   (instead of fixed 3)
