@@ -1,7 +1,7 @@
 # GLP
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/im-n1/glp/master/assets/screen.png">
+    <img src="https://gitlab.com/imn1/glp/-/raw/master/assets/screen.png">
 </p>
 
 Small CLI tool for fetching Gitlab pipeline states and other info.
@@ -32,8 +32,11 @@ or download prebuild binaries for `amd64`
 
 ## Changelog
 
-### 0.1.2 (in progess)
+### 0.1.2
 - space between pipelines added
+- added `-f` param for "finished at" info for each pipeline
+- added internal remaphore to prevent Gitlab flood
+- code structured to modeles
 
 ### 0.1.1
 - `-c` param for setting the number of pipelines on output

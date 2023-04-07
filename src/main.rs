@@ -1,26 +1,32 @@
 mod args;
+mod job;
+mod pipeline;
+mod stage;
 
-use std::borrow::Cow;
+use crate::job::Job;
+use crate::pipeline::Pipeline;
+use crate::stage::Stage;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::env;
-use std::io;
+use std::sync::Arc;
 use std::time::Duration;
 
 use colored::*;
 use futures::future::join_all;
-use humantime::format_duration;
 use json;
 use ptree;
 use reqwest;
 use tokio::fs;
+use tokio::sync::Semaphore;
 
 const DEFAULT_LIMIT: u8 = 3;
+const SEMAPHORE_LIMIT: usize = 10;
 
-trait Labelable {}
+// trait Labelable {}
 
 #[derive(Debug, Clone)]
-struct Label(String);
+pub struct Label(String);
 
 impl Label {
     fn to_string(&self, base: &str) -> String {
@@ -34,150 +40,7 @@ impl Label {
     }
 }
 
-/// Represents Gitlab pipeline.
-#[derive(Debug, Clone)]
-struct Pipeline {
-    id: Label,
-    git_ref: String,
-    status: String,
-    stages: Vec<Stage>,
-}
-
-impl ptree::TreeItem for Pipeline {
-    type Child = Stage;
-
-    fn write_self<W: io::Write>(&self, f: &mut W, _style: &ptree::Style) -> io::Result<()> {
-        let mut suffix = String::new();
-
-        if self.is_finished() {
-            suffix = self.get_finished_suffix();
-        }
-
-        write!(
-            f,
-            "{} ({}){}",
-            &self.id.to_string(&self.status),
-            &self.git_ref,
-            suffix
-        )
-    }
-
-    fn children(&self) -> Cow<[Self::Child]> {
-        Cow::from(&self.stages)
-    }
-}
-
-impl Pipeline {
-    fn is_finished(&self) -> bool {
-        "success" == self.status || "failed" == self.status
-    }
-
-    /// Producess output like " [7m 2s]" as a sum of
-    /// duration of all pipeline jobs.
-    /// Truncate units lower than seconds.
-    fn get_finished_suffix(&self) -> String {
-        let mut sum = Duration::from_secs(0);
-
-        for stage in self.stages.iter() {
-            for job in stage.jobs.iter() {
-                if let Some(dur) = job.duration {
-                    sum += dur
-                }
-            }
-        }
-
-        format!(
-            " [{}]",
-            format_duration(Duration::from_secs(sum.as_secs())).to_string()
-        )
-    }
-}
-
 // Represents Gitlab stage (group of jobs).
-#[derive(Debug, Clone)]
-struct Stage {
-    name: Label,
-    jobs: Vec<Job>,
-}
-
-impl Stage {
-    fn find_status(&self) -> &str {
-        // Priorities are:
-        // 1. running
-        // 2. failed
-        // 3. success
-
-        let job_statuses = self
-            .jobs
-            .iter()
-            .map(|j| j.status.clone())
-            .collect::<Vec<String>>();
-
-        if job_statuses.iter().any(|s| s == "running") {
-            return "running";
-        }
-        if job_statuses.iter().any(|s| s == "failed") {
-            return "failed";
-        }
-        if job_statuses.iter().any(|s| s == "success") {
-            return "success";
-        }
-
-        "unknown"
-    }
-}
-
-impl ptree::TreeItem for Stage {
-    type Child = Job;
-
-    fn write_self<W: io::Write>(&self, f: &mut W, _style: &ptree::Style) -> io::Result<()> {
-        write!(f, "{}", &self.name.to_string(self.find_status()))
-    }
-
-    fn children(&self) -> Cow<[Self::Child]> {
-        Cow::from(&self.jobs)
-    }
-}
-
-/// Represents Gitlab pipeline job.
-#[derive(Debug, Clone)]
-struct Job {
-    id: String,
-    name: Label,
-    web_url: String,
-    status: String,
-    stage: String,
-    started_at: Option<String>,
-    duration: Option<Duration>,
-}
-
-impl ptree::TreeItem for Job {
-    type Child = Self;
-
-    fn write_self<W: io::Write>(&self, f: &mut W, _style: &ptree::Style) -> io::Result<()> {
-        let duration_str = match self.duration {
-            // Keep duration seconds and forget the subtle resolution.
-            // Use "-" as fallback in case of no duration at all.
-            Some(duration) => format_duration(Duration::from_secs(duration.as_secs())).to_string(),
-            _ => "-".to_string(),
-        };
-
-        write!(
-            f,
-            "{} ({})",
-            &self.name.to_string(&self.status),
-            duration_str
-        )
-    }
-
-    fn children(&self) -> Cow<[Self::Child]> {
-        Cow::from(vec![])
-    }
-}
-
-// fn print_type_of<T>(_: &T) {
-//     println!("{}", std::any::type_name::<T>());
-// }
 
 /// Takes following poritional arguments:
 /// - project ID
@@ -191,6 +54,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await
             .expect("No project ID (no parameter nor .glp file."),
     };
+    let show_finished = app_args.get_one::<bool>("finished").unwrap().clone();
 
     let private_token = env::var("GLP_PRIVATE_TOKEN")
         .expect("No Gitlab private token found - set GLP_PRIVATE_TOKEN environment variable.");
@@ -213,11 +77,15 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Fetch jobs for each running pipeline.
     let mut tasks = vec![];
+    let semaphore = Arc::new(Semaphore::new(SEMAPHORE_LIMIT));
 
     for i in 0..pipelines.len() {
         let pip = pipelines[i].clone();
         let private_token = private_token.clone();
         let project_id = project_id.clone();
+
+        // Acquire semaphore lock.
+        let semaphore_permit = semaphore.clone().acquire_owned().await.unwrap();
 
         tasks.push(tokio::spawn(async move {
             // Fetch jobs for current pipeline.
@@ -227,7 +95,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "https://gitlab.com/api/v4/projects/{}/pipelines/{}/jobs",
                     project_id, pip["id"]
                 ))
-                .header("PRIVATE-TOKEN", private_token)
+                .header("PRIVATE-TOKEN", &private_token)
                 .send()
                 .await
                 .unwrap()
@@ -316,12 +184,24 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return a_started_at.partial_cmp(&b_started_at).unwrap();
             });
 
-            Pipeline {
+            let mut pip = Pipeline {
                 id: Label(pip["id"].as_usize().unwrap().to_string()),
                 git_ref: pip["ref"].as_str().unwrap().to_string(),
                 status: pip["status"].as_str().unwrap().to_string(),
                 stages: pip_stages,
+                show_finished,
+                details: None,
+            };
+
+            // Fetch details only if needed.
+            if show_finished {
+                pip.fetch_details(&private_token, &project_id).await;
             }
+
+            // Free acquired semaphore lock.
+            drop(semaphore_permit);
+
+            pip
         }));
     }
 

@@ -19,5 +19,11 @@ pub fn parse() -> ArgMatches {
                 .value_parser(value_parser!(u8))
                 .default_value(super::DEFAULT_LIMIT.to_string()),
         )
+        .arg(
+            Arg::new("finished")
+                .short('f')
+                .long("finished")
+                .action(ArgAction::SetTrue),
+        )
         .get_matches()
 }
